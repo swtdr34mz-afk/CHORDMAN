@@ -1,9 +1,9 @@
 {
-  "what": "A chord performance synth: four analog-style engines (DCO with chorus, VCO with poly mod, a morphing SVF, a driven LADDER), the Roland J-6's 100 chord sets on the lower keys, a melody that follows the chord on the upper keys, the J-6's grooves, a chord sequencer, and MIDI clock and transport in over USB, from a computer or from another FM-1 (SIX MACHINES) with CHORDMAN as its USB host.",
+  "what": "A chord performance synth with a low split: chords in a groove on the right and a bass arp on the left, or a scale-locked lead over chords. Seven sounds after classic synths (Juno-106 poly and pad, Oberheim brass, DX7 electric piano and bell, Minimoog bass and lead), twenty chord sets by mood plus five secret ones, a sidechain for the kick, MIDI clock in over USB (another FM-1 as well), and CHORD MAN, an arcade game that rewards playing in time.",
   "author": "swtdr34mz",
   "kinds": "synth",
   "play": "https://swtdr34mz-afk.github.io/CHORDMAN/emu/",
   "image": "site/img/screen-home.png",
-  "color": "#FFAA28",
+  "color": "#FFBA28",
   "sounds": "none"
 }

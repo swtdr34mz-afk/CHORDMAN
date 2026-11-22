@@ -1,130 +1,112 @@
 # CHORDMAN
 
-A chord performance synth for the M-VAVE FM-1 by **swtdr34mz**. Four analog-style engines, the Roland J-6's 100 chord
-sets on the lower twelve keys, a melody on the upper fifteen that keeps to the chord's scale, the J-6's grooves, a
-chord sequencer, and MIDI clock and transport in over USB. Built on [fm1-base](https://github.com/charlesvestal/fm1-base)
+A chord performance synth for the M-VAVE FM-1 by **swtdr34mz**. The keyboard is split: chords in a groove on the
+right and a bass arp on the left, or a lead locked to the scale over the chords. Seven sounds after classic synths,
+twenty chord sets by mood, a sidechain that makes room for the kick, MIDI clock in over USB, and CHORD MAN, an arcade
+game under every screen that rewards playing in time. Built on [fm1-base](https://github.com/charlesvestal/fm1-base)
 and [felucca-bsp](https://github.com/hugelton/felucca-bsp).
 
-Minimal by design: three encoders choose the sound, the chords and the groove; four knobs shape the sound; every page is
-one level deep, and HOME is always one press away.
-
-![The play screen](site/img/screen-home.png) ![A chord set](site/img/screen-set.png)
-![A groove](site/img/screen-groove.png) ![Linked to another FM-1](site/img/screen-global.png)
+![Chords and bass](site/img/screen-home.png) ![Lead over chords](site/img/screen-lead.png)
+![The groove](site/img/screen-groove.png) ![The sidechain](site/img/screen-sidechain.png)
 
 Try it in the browser: <https://swtdr34mz-afk.github.io/CHORDMAN/emu/>
 
-## The four engines
+## The split
 
-Each engine is its own analog-style voice, eight sounds each (32 in all), eight voices. Their names say how they are
-built; in brackets, the synth each one leans on.
+The keyboard has two halves, each with its own sound: **LEFT**, the lower twelve keys (F3 to E4), and **RIGHT**, the
+upper fifteen (F4 to G5). SEL switches between two modes.
 
-| Engine | Built from | CHAR (K3 at HOME) | EDIT page |
-| --- | --- | --- | --- |
-| **DCO** (Juno-106) | one oscillator: saw, pulse with PWM, a square sub, noise; a soft four-pole low-pass | the BBD chorus: OFF, I, II, I+II | PWM, SUB, NOISE, RESO |
-| **VCO** (Prophet-6) | two oscillators whose shape runs triangle, saw, square, narrow pulse; poly mod; a four-pole low-pass | SHAPE | DETUNE, OSC 2 (unison, +4th, +5th, octave up, down), POLYMOD, RESO |
-| **SVF** (Oberheim) | two detuned saws (the second turning into a pulse) driven into a two-pole state-variable filter | MODE: low-pass, notch, high-pass, and between | DETUNE, PULSE, DRIVE, RESO |
-| **LADDER** (Moog One) | two saws spread and a square sub, driven into a four-pole ladder; glide | DRIVE | DETUNE, SUB, GLIDE, RESO |
+| | LEFT | RIGHT |
+| --- | --- | --- |
+| **CHORD mode** | the bass. With nothing held, a bass arp runs on the chord's root. Hold a white key to play the bass yourself: the white keys are the set's scale, a black key the same note an octave up | the set's eight chords, one per white key (the ninth plays the first again). Each black key plays the chord on its left with more colour (a 7th, a 9th, a sus) |
+| **LEAD mode** | the chords: the first seven on the white keys, coloured on the black keys. ARP decides how the left part plays them: as chords in the groove, or as a bass arp on their root | the lead: the white keys are the set's scale from its tonic, a black key the note a semitone up (a blue note) |
 
-At HOME the four knobs are the same on every engine: **TONE** (the cutoff), **MOTION** (how far the envelope opens
-it), **CHAR** (the engine's own), **SPACE** (the reverb, and the delay joining past the middle).
+ARP switches the left part's job: in CHORD mode a bass arp or a held root; in LEAD mode chords or a bass arp (the
+left sound follows: a pad for chords, a bass for the arp). REC is **HOLD**: a chord stays when you let go of its key.
 
-## The panel
+## The sounds
 
-| Control | What it does |
-| --- | --- |
-| PRESETS | the sound (32: DCO 1-8, VCO 9-16, SVF 17-24, LADDER 25-32) |
-| ALGORITHM | the chord set, 1-100 (fast turns jump by five) |
-| OCT- or OCT+ held + ALGORITHM | the key, -12 .. +12 semitones |
-| SELECT | the groove (and it switches the groove on) |
-| K1-K4 | at HOME: TONE, MOTION, CHAR, SPACE; on a page: that page's four |
-| FX | VOICING (J-6, OPEN, WIDE, SMOOTH), STRUM, SWING, DELAY (OFF, 1/8, 3/16, 1/4, 3/8) |
-| ENV | ATTACK, DECAY, SUSTAIN, RELEASE (the amp and the filter, as on a Juno) |
-| LFO | RATE, DEPTH, TARGET (PITCH, FILTER, SHAPE, AMP), DELAY (its fade-in) |
-| EDIT | the engine's own four (above) |
-| GLO | TEMPO, STEP (the sequencer's step: 1/4, 1/2, 1 BAR), SYNC (AUTO, INT, EXT), USB HOST (OFF, ON), and the CPU load |
-| a page button again | back to HOME |
-| SEL | chord mode on and off (off: the 27 keys play notes) |
-| HOME | the play screen; held a second: the sound back to its preset |
-| SAVE | keeps everything over a power cycle (lit while something is not saved) |
-| ARP | HOLD: a chord stays when its key is let go |
-| SEQ | the groove on and off |
-| PLAY | the chord sequencer from its first step, and stop |
-| REC | recording; held a second: the sequence cleared |
-| OCT- / OCT+ | the octave; both at once: octave and key back to 0 |
+PRESETS changes the sound of the part in focus: the right part, or the left one while you hold a left key or are on
+its SOUND or ENV page.
 
-## The keys
+| Sound | After | How |
+| --- | --- | --- |
+| JUNO POLY, JUNO POLY II | a Juno-106's poly | one DCO (saw, pulse, sub), a soft four-pole filter, the BBD chorus I or II |
+| JUNO PAD, JUNO PAD WIDE | a Juno-106's pad | PWM pulse and saw, slow envelopes, chorus II or I+II |
+| OB BRASS, OB BRASS STAB | an Oberheim's brass | two saws a few cents apart into a two-pole filter that swells open |
+| DX E.PIANO, DX E.PIANO II | a DX7's electric piano | six-operator FM, algorithm 5: the tine and the body |
+| DX BELL, DX GLASS BELL | a DX7's bells | the same algorithm, bell ratios, long decays |
+| MOOG BASS, MOOG SUB BASS | a Minimoog Model D's bass | three oscillators into the driven ladder, mono, glide |
+| MOOG LEAD, MOOG LEAD SQUARE | a Minimoog Model D's lead | detuned saws or a square, the ladder, glide, delayed vibrato |
 
-In chord mode the **lower twelve keys** (F3 to E4) play the chord set: each key plays the chord of its pitch class,
-as on the J-6 (the C key plays the set's C chord, wherever it lies). They glow; the chord sounding is lit. The **upper
-fifteen keys** (F4 to G5) play a melody an octave above, through the same engine: a note outside the chord's scale
-moves to the nearest one in it, so nothing clashes. The melody keys of the chord's notes glow.
+The filters run at twice the sample rate. Each oscillator drifts a little, as analog ones do.
 
-**VOICING** (FX): **J-6** as the J-6 voices it; **OPEN** the second note an octave up; **WIDE** the bass an octave
-down; **SMOOTH** each chord's notes kept close to the last one's, so progressions glide instead of jumping.
-**STRUM** spreads a chord's notes up to 45 ms apart.
+## The pages
+
+Every page shows its four knobs side by side, each in its own colour (1 red, 2 yellow, 3 mint, 4 blue, the same on
+every page), with the game running underneath.
+
+| Button | Page | K1 | K2 | K3 | K4 |
+| --- | --- | --- | --- | --- | --- |
+| HOME | play (the knobs are the right sound's) | TONE | MOTION | CHAR | SPACE |
+| EDIT | SOUND: the right part, again the left, again HOME | TONE (the filter, or the FM's brightness) | MOTION (how far the envelope opens it) | CHAR: the chorus (Juno), the spread (OB), the drive (Moog), the shine (DX) | SPACE (the reverb, the delay past the middle) |
+| ENV | the envelope: right, left, HOME | ATTACK | DECAY | SUSTAIN | RELEASE |
+| LFO | GROOVE | CHORDS: FULL, QUARTER, EIGHTS, OFFBEAT, PUMP, SYNCO, HALF, ARP UP, ARP DOWN, ARP UP/DN, ARP RANDOM, CASCADE, TRANCE | BASS: ROOT, OCTAVE, OFFBEAT, ROLLING, ROOT-5TH, DISCO, HALF | SWING | GATE |
+| FX | SIDECHAIN | DEPTH | SHAPE: SOFT, PUMP, HARD, GATE | TARGET: VOLUME, FILTER, BOTH | KICK: 4/4, HALF, 2 + 4, TRAP |
+| GLO | GLOBAL | TEMPO | KEY | SYNC: AUTO, INT, EXT | USB HOST |
+
+The other controls:
+
+- **ALGORITHM** picks the chord set. With OCT- or OCT+ held, it sets the key.
+- **SELECT** steps through the chord grooves.
+- **SEQ** switches the grooves on or off. Off, the chords and the bass are held.
+- **PLAY** starts the transport, which sends MIDI clock.
+- **SAVE** keeps everything.
+- **HOME** held a second brings both sounds back as designed.
+- **OCT- / OCT+** set the right part's octave. Both at once reset the octave and the key.
 
 ## The chord sets
 
-The 100 sets of the J-6's Chord Set List, twelve chords each, voiced as the J-6 voices them: Pop, Jazz, Blues,
-traditional major and minor, stacks, utility sets (every major, minor, maj7, m7, maj9, m9 ... chord), Cinematic,
-Synthwave, Trance, House, Techno, EDM, Gospel and R&B, Lo-fi, Funk, Neo Soul, Bossa Nova, Classical and Modern. Turning
-ALGORITHM shows the set's twelve chords in keyboard order.
+Twenty moods, eight chords each: the first four are the progression, the next four its bridge and turnaround.
 
-## The grooves
+HAPPY · SUNSHINE · HEARTBREAK · MELANCHOLY · DRAMATIC · EPIC MOVIE · HERO · WONDER · 80s NOSTALGIA · FIFTIES · DREAM ·
+LOFI · NEO SOUL · GOSPEL · DARK · MYSTERY · FUNK · HOUSE · TRANCE · BLUES
 
-The J-6's nine phrase styles, twelve variations each. SELECT runs through all 108; SEQ switches the groove off and on.
+Five more are secret: the game unlocks them.
 
-| Style | What it plays |
-| --- | --- |
-| ARP 8TH, ARP 16TH | the chord's notes one by one: up, up and down, down, over one or two octaves; 1-6 straight, 7-12 triplets |
-| BEAT | the whole chord again every 2/1, 1/1, 1/2, 1/4, 1/8, 1/16; 7-12 the triplets |
-| RHYTHM, SYNCOPE | the J-6's 16th patterns (o___, _o__, o~o_ ...); SYNCOPE 7-12 run in threes against the beat |
-| PIANO | bass and chord, simple patterns |
-| STABS | offbeat and syncopated chord stabs |
-| STRUM, FUNK STRUM | strummed chords, down and up, simple and in 16ths |
+Each chord is voiced close to the one before it, so progressions move by steps, not jumps.
 
-SWING (FX) delays the off 16ths, up to 75 %.
+## CHORD MAN
 
-## The sequencer
+Under every screen, CHORD MAN runs through the bar in time, eating its sixteen beat dots. He is an open ring that
+bites, with the chord's notes as four bars inside.
 
-Sixteen steps, each a chord (or a tie, or a rest), a quarter, half a bar or a bar long (GLOBAL > STEP).
+- **Timing:** every key you play is judged against the grid: PERFECT, GOOD or a miss.
+- **Combo:** hits build the combo and push the SOURS back. The sours are the wrong notes, cracked diamonds. Misses let
+  them close in, and one that reaches CHORD MAN breaks the combo.
+- **FEVER:** a combo of 32 starts FEVER for eight bars, with double points while the sours run.
+- **Unlocks:** points add up over all your sessions and unlock the secret sets at 3,000, 10,000, 25,000, 50,000 and
+  100,000. The best session is the high score.
 
-- **Step recording:** stopped, press REC. Each chord key writes the next step; ARP writes a tie, SEL a rest. The
-  sequence is as long as what you wrote. REC again ends it.
-- **Live recording:** playing, press REC. A chord key writes the nearest step.
-- **Clear:** hold REC a second.
-- While it plays, a chord key you hold wins over the sequence, and the groove plays whatever chord sounds.
+## Sync
 
-## Sync: MIDI clock and transport
+CHORDMAN follows MIDI clock with START, STOP and CONTINUE over USB. Set it with GLOBAL > SYNC: AUTO follows a clock
+when one comes, INT ignores it, EXT waits for one. The sidechain's kick pattern runs in time with whatever clock leads.
+Notes on channel 1 play the right part; other channels are ignored, so a drum machine's notes on 10 stay out.
 
-CHORDMAN follows MIDI clock (24 a quarter) with START, STOP and CONTINUE over USB. GLOBAL > SYNC: **AUTO** follows a
-clock when one comes (the header shows EXT and the tempo heard) and runs on its own tempo otherwise; **INT** ignores
-it; **EXT** waits for it. Notes on channel 1 play the melody; other channels are ignored (a drum machine's notes on
-channel 10 stay out). Playing on its own tempo, CHORDMAN sends clock with START and STOP to USB.
-
-**Two FM-1s:** the FM-1 has a MIDI IN jack only, so two FM-1s talk over USB, and one has to be the USB host. Set
-GLOBAL > USB HOST to ON on CHORDMAN and connect the other FM-1 (for example running
-[SIX MACHINES](https://github.com/swtdr34mz-afk/SIX_MACHINES), which sends clock, START and STOP) with a USB-C to USB-C
-cable or an OTG adapter. The header shows LINK while the clock comes in. The port gives no power: the other FM-1 runs
-on its battery (or through a powered hub). USB HOST is never saved: every power-on is a normal USB device again, so a
-computer, updates and backups always find the FM-1.
-
-## Install
-
-Releases: <https://github.com/swtdr34mz-afk/CHORDMAN/releases> (the `.fwsc`, installed like any fm1-base firmware).
+**Two FM-1s:** set GLOBAL > USB HOST to ON and connect the other FM-1 with a USB-C to USB-C cable or an OTG adapter.
+That FM-1 can run [SIX MACHINES](https://github.com/swtdr34mz-afk/SIX_MACHINES), for example, which sends clock, START
+and STOP. The header shows LINK and the tempo heard. The port gives no power, so the other FM-1 runs on its own
+battery. USB HOST is never saved: every power-on starts as a normal USB device again.
 
 ## Build
 
     git clone --recursive https://github.com/swtdr34mz-afk/CHORDMAN
-    python3 fm1-base/tools/build.py . --host        # the host simulator
+    python3 fm1-base/tools/build.py . --host
     build/host/chordman_host tests/basic.txt build/host
     build/host/chordman_host tests/sync.txt build/host
 
-The firmware itself is built on GitHub Actions (`.github/workflows/build.yml`), which fetches JieLi's toolchain. A tag
-`v*` makes a release with the `.fwsc`.
-
-`tools/` holds the scripts that read the chord sets out of the J-6 manual's table (`words.py`, `parse3.py`) and write
-`dsp/chords.c` (`gen_chords.py`).
+GitHub Actions builds the firmware. A tag `v*` makes a release with the `.fwsc`.
 
 ## Licence
 

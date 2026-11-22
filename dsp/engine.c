@@ -1,22 +1,24 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 swtdr34mz (CHORDMAN) */
-/* CHORDMAN's sound engine (engine.h): the voices, the effects, the chord sets, the grooves and the player, one unit.
- * No libc here: the device builds this unit on its own, at -O2. */
+/* CHORDMAN's sound engine (engine.h): the sounds, the voices, the effects, the chords, the grooves and the player,
+ * one unit. No libc here: the device builds this unit on its own, at -O2. */
 #include "engine.h"
 #include "fastmath.h"
 #include "plat.h"
 
 static inline int clampi(int v, int lo, int hi) { return v < lo ? lo : v > hi ? hi : v; }
 
-#include "tables.c"
+#include "sounds.c"
+
+#include "sets.c"
 
 #include "chords.c"
-
-#include "grooves.c"
 
 #include "synth.c"
 
 #include "fx.c"
+
+#include "grooves.c"
 
 #include "player.c"
 
@@ -30,16 +32,18 @@ void eng_init(void)
     uint32_t i;
     CFG = &cfg0;
     cfg0.bpm = 120;
-    cfg0.patch = PRESETS[0];
-    for (i = 0; i < NVOICES; i++) {
-        V[i].stage = 0;
+    sin_init();
+    for (i = 0; i < NV; i++) {
+        V[i].amp.stage = 0;
         V[i].note = -1;
-        V[i].subph = 1.0f;
     }
-    PL.live_slot = -1;
-    PL.slot = -1;
-    PL.seq_slot = -1;
-    PL.step = -1;
+    PL.want_idx = PL.idx = -1;
+    PL.want_bass = -1;
+    PL.bass_note = -1;
+    PL.lead_note = -1;
+    PL.centre = 62;
+    PL.arp_seed = 1;
+    FX.since = 1e9f;
     snd_dirty = 1;
 }
 
@@ -47,54 +51,56 @@ void eng_bind(const eng_cfg_t *cfg)
 {
     CFG = cfg;
     snd_dirty = 1;
-    chord_dirty = 1;
+    cfg_dirty = 1;
 }
-
-void eng_changed(void)
-{
-    snd_dirty = 1;
-    chord_dirty = 1;
-}
+void eng_changed(void) { snd_dirty = 1; }
+void eng_rechord(void) { cfg_dirty = 1; }
 
 /* the main loop's notes reach the voices through a queue the render drains (the voices are the render's) */
 #define EVQ 32u
 static volatile uint32_t evq[EVQ];
 static volatile uint32_t evq_w, evq_r;
 enum { EV_ON = 1, EV_OFF, EV_ALL_OFF };
-static void ev_push(uint32_t type, uint32_t note, uint32_t vel)
+static void ev_push(uint32_t type, uint32_t part, uint32_t note, uint32_t vel)
 {
-    uint32_t w = evq_w;
-    if (w - evq_r >= EVQ)
-        return;                          /* (full: dropped) */
-    evq[w % EVQ] = type | note << 8 | vel << 16;
-    evq_w = w + 1u;
+    uint32_t f = plat_lock(), w = evq_w;
+    if (w - evq_r < EVQ) {
+        evq[w % EVQ] = type | part << 4 | note << 8 | vel << 16;
+        evq_w = w + 1u;
+    }
+    plat_unlock(f);
 }
-void eng_note_on(int note, int vel)
-{
-    if (note >= 0 && note <= 127)
-        ev_push(EV_ON, (uint32_t)note, (uint32_t)clampi(vel, 1, 127));
-}
-void eng_note_off(int note)
+void eng_note_on(int part, int note, int vel)
 {
     if (note >= 0 && note <= 127)
-        ev_push(EV_OFF, (uint32_t)note, 0);
+        ev_push(EV_ON, (uint32_t)part & 1u, (uint32_t)note, (uint32_t)clampi(vel, 1, 127));
 }
-void eng_all_off(void) { ev_push(EV_ALL_OFF, 0, 0); }
+void eng_note_off(int part, int note)
+{
+    if (note >= 0 && note <= 127)
+        ev_push(EV_OFF, (uint32_t)part & 1u, (uint32_t)note, 0);
+}
+void eng_all_off(void) { ev_push(EV_ALL_OFF, 0, 0, 0); }
 static void ev_drain(void)
 {
     while (evq_r != evq_w) {
-        uint32_t e = evq[evq_r % EVQ], note = (e >> 8) & 0x7Fu;
+        uint32_t e = evq[evq_r % EVQ], part = (e >> 4) & 1u, note = (e >> 8) & 0x7Fu;
         evq_r++;
-        if ((e & 0xFFu) == EV_ON) {
-            voice_off((int)note, 0);
-            voice_on((int)note, 0.35f + 0.65f * (float)(e >> 16) / 127.0f, 0, 0);
-        } else if ((e & 0xFFu) == EV_OFF) {
-            voice_off((int)note, 0);
+        if ((e & 0xFu) == EV_ON) {
+            if (!PS[part].mono)
+                voice_off((int)part, (int)note, 0);
+            voice_on((int)part, (int)note, 0.3f + 0.7f * (float)(e >> 16) / 127.0f, 0, 0);
+            PL.lead_note = (int)note;
+        } else if ((e & 0xFu) == EV_OFF) {
+            voice_off((int)part, (int)note, 0);
+            if (PL.lead_note == (int)note)
+                PL.lead_note = -1;
         } else {
-            voices_owner_off(0);
-            held_all_off();
-            PL.slot = -1;
-            PL.n = 0;
+            voices_off(PART_L, -1);
+            voices_off(PART_R, -1);
+            PL.nheld = 0;
+            PL.lead_note = -1;
+            cfg_dirty = 1;
         }
     }
 }
@@ -102,22 +108,18 @@ static void ev_drain(void)
 void eng_panic(void)
 {
     uint32_t i;
-    for (i = 0; i < NVOICES; i++) {
-        V[i].stage = 0;
-        V[i].env = 0.0f;
+    for (i = 0; i < NV; i++) {
+        V[i].amp.stage = 0;
         V[i].wait = 0;
     }
     PL.nheld = 0;
-    PL.sustained = 0;
-    PL.slot = -1;
-    PL.n = 0;
 }
 
 int eng_voices(void)
 {
     int i, n = 0;
-    for (i = 0; i < NVOICES; i++)
-        n += V[i].stage != 0;
+    for (i = 0; i < NV; i++)
+        n += V[i].amp.stage != 0;
     return n;
 }
 uint32_t eng_notes_played(void) { return notes_played; }
@@ -130,82 +132,89 @@ float eng_level(void)
 
 /* ------------------------------------------------------------- the render --- */
 #define MAXBLOCK 256u
-#define TCHUNK 32u                        /* samples between ticks looked at (0.7 ms) */
-static float buf_l[2][MAXBLOCK], buf_r[2][MAXBLOCK];
-static float lfo_buf[MAXBLOCK / CHUNK + 1];
+#define TCHUNK 32u
+static float bus[2][NPARTS][2][MAXBLOCK];    /* [core][part][L, R] */
+static float out_l[MAXBLOCK], out_r[MAXBLOCK];
+static float lfo_buf[NPARTS][MAXBLOCK / CHUNK + 1];
+static float lfo_ph[NPARTS];
 static uint32_t job_n;
 
 static void render_voices(int core, uint32_t from, uint32_t to, uint32_t n)
 {
-    uint32_t i;
-    float *L = buf_l[core], *R = buf_r[core];
-    for (i = 0; i < n; i++)
-        L[i] = R[i] = 0.0f;
-    for (i = from; i < to; i++)
-        if (V[i].stage)
-            voice_render(&V[i], L, R, n, lfo_buf);
+    uint32_t i, p;
+    for (p = 0; p < NPARTS; p++)
+        for (i = 0; i < n; i++)
+            bus[core][p][0][i] = bus[core][p][1][i] = 0.0f;
+    for (i = from; i < to; i++) {
+        voice_t *v = &V[i];
+        if (!v->amp.stage)
+            continue;
+        if (PS[v->part].type == T_FM)
+            render_fm(v, &PS[v->part], bus[core][v->part][0], bus[core][v->part][1], n);
+        else
+            render_analog(v, &PS[v->part], bus[core][v->part][0], bus[core][v->part][1], n, lfo_buf[v->part]);
+    }
 }
-static void job_voices(uint32_t arg)     /* the second core: voices 4 .. 7 */
+static void job_voices(uint32_t arg)     /* the second core: half the voices */
 {
     (void)arg;
-    render_voices(1, NVOICES / 2u, NVOICES, job_n);
+    render_voices(1, NV / 2u, NV, job_n);
 }
 
-/* the clock: the ticks of this chunk (the internal clock's, or the MIDI clocks that came in) */
+/* the clock for a chunk: the transport, the MIDI clocks that came in, the internal clock's ticks */
 static void clock_chunk(uint32_t n, int first)
 {
     int ext = ext_active();
-    PL.sample += n;
     if (ext != PL.was_ext) {
         PL.was_ext = ext;
         PL.acc = 0.0f;
     }
     if (first) {
-        chord_update();                  /* a key's chord at once, not at the next tick */
-        /* the transport: the player's own (PLAY), or MIDI's */
-        if (PL.ext_start) {
+        chord_refresh();
+        if (PL.ext_start) {              /* START: its clocks follow; the internal one waits for them */
             PL.ext_start = 0;
-            transport_start(1);
+            PL.t_song = 0;
+            PL.playing = 1;
+            PL.ext_at = PL.sample ? PL.sample : 1u;
         }
         if (PL.ext_cont) {
             PL.ext_cont = 0;
-            transport_start(0);
+            PL.playing = 1;
+            PL.ext_at = PL.sample ? PL.sample : 1u;
         }
         if (PL.ext_stop) {
             PL.ext_stop = 0;
-            transport_stop();
+            PL.playing = 0;
         }
         if (PL.start_req) {
             PL.start_req = 0;
-            transport_start(1);
+            PL.t_song = 0;
+            PL.playing = 1;
             if (!ext) {
                 app_clock_out(0xFAu);
-                PL.acc = 1.0f;           /* the first tick at once */
+                PL.acc = 1.0f;
             }
         }
         if (PL.stop_req) {
             PL.stop_req = 0;
             if (PL.playing && !ext)
                 app_clock_out(0xFCu);
-            transport_stop();
+            PL.playing = 0;
         }
-        while (PL.ext_pending) {         /* the MIDI clocks: a tick each */
-            uint32_t now = PL.sample;
+        while (PL.ext_pending) {
             PL.ext_pending--;
             if (PL.ext_at) {
-                float d = (float)(now - PL.ext_at);
+                float d = (float)(PL.sample - PL.ext_at);
                 if (d > 1.0f && d < SR)
-                    PL.ext_period = PL.ext_period > 1.0f ? PL.ext_period + (d - PL.ext_period) * 0.1f : d;
+                    PL.ext_period = PL.ext_period > 1.0f ? PL.ext_period + (d - PL.ext_period) * 0.15f : d;
             }
-            PL.ext_at = now;
+            PL.ext_at = PL.sample ? PL.sample : 1u;
             if (CFG->sync != SYNC_INT)
                 tick();
         }
     }
-    if (!ext) {
-        if (CFG->sync == SYNC_EXT)
-            return;                      /* EXT: nothing moves without a clock */
-        PL.acc += (float)n * (float)(CFG->bpm ? CFG->bpm : 120) * 24.0f / (60.0f * SR);
+    if (!ext && CFG->sync != SYNC_EXT) {
+        PL.acc += (float)n / samples_per_tick();
         while (PL.acc >= 1.0f) {
             PL.acc -= 1.0f;
             if (PL.playing) {
@@ -215,30 +224,44 @@ static void clock_chunk(uint32_t n, int first)
             tick();
         }
     }
+    held_expire(PL.sample + n);
+    PL.sample += n;
 }
 
 void eng_render(int32_t *lr, uint32_t n, float gain)
 {
-    uint32_t i, c, at;
+    uint32_t i, c, at, p;
+    float *pl[2], *pr[2];
     if (n > MAXBLOCK)
         n = MAXBLOCK;
     if (snd_dirty) {
         snd_dirty = 0;
-        sound_from(&CFG->patch);
+        for (p = 0; p < NPARTS; p++)
+            psnd_from((int)p, &CFG->part[CFG->mode & 1u][p]);
+        for (p = 0; p < NPARTS; p++)
+            chorus_set(&CH[p], PS[p].chorus);
+    } else {
+        for (p = 0; p < NPARTS; p++)     /* (the chorus's mix glides) */
+            chorus_set(&CH[p], PS[p].chorus);
     }
-    fx_block(&CFG->patch, CFG->fx, ext_active() && PL.ext_period > 1.0f ? SR * 60.0f / (PL.ext_period * 24.0f)
-                                                                       : (float)(CFG->bpm ? CFG->bpm : 120));
-    /* the LFO, one for all, a value a chunk (a sine) */
-    for (c = 0; c <= n / CHUNK; c++) {
-        lfo_buf[c] = fm_sin_turns(lfo_ph);
-        lfo_ph += S.lfo_inc * (float)CHUNK;
-        if (lfo_ph >= 1.0f)
-            lfo_ph -= 1.0f;
+    FX.beat = samples_per_tick() * 24.0f;
+    /* the sidechain on the filters: where it is now */
+    {
+        float d = CFG->sc[2] == ST_FILTER || CFG->sc[2] == ST_BOTH ? FX.duck : 0.0f;
+        for (p = 0; p < NPARTS; p++)
+            PS[p].duck_oct = -d * 4.0f;
     }
-    lfo_val = lfo_buf[0];
+    /* each part's LFO (its vibrato, its PWM), a value a chunk */
+    for (p = 0; p < NPARTS; p++) {
+        float rate = PS[p].s ? PS[p].s->vib_rate : 5.0f;
+        for (c = 0; c <= n / CHUNK; c++) {
+            lfo_buf[p][c] = fm_sin_turns(lfo_ph[p]);
+            lfo_ph[p] += rate * ISR * (float)CHUNK;
+            if (lfo_ph[p] >= 1.0f)
+                lfo_ph[p] -= 1.0f;
+        }
+    }
     ev_drain();
-    /* the clock and the player, chunk by chunk; the voices render the block after: what a chunk's ticks start
-     * waits for the chunk's place in the block (voice_on adds chunk_at) */
     for (at = 0; at < n; at += TCHUNK) {
         uint32_t m = n - at < TCHUNK ? n - at : TCHUNK;
         chunk_at = at;
@@ -248,24 +271,25 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
     job_n = n;
     {
         int on2 = plat_cpu2_on() && plat_cpu2_run(job_voices, 0);
-        render_voices(0, 0, NVOICES / 2u, n);
+        render_voices(0, 0, NV / 2u, n);
         if (!on2 || plat_cpu2_wait() != 0)
             job_voices(0);
     }
-    for (i = 0; i < n; i++) {
-        buf_l[0][i] += buf_l[1][i];
-        buf_r[0][i] += buf_r[1][i];
+    for (p = 0; p < NPARTS; p++) {
+        for (i = 0; i < n; i++) {
+            bus[0][p][0][i] = (bus[0][p][0][i] + bus[1][p][0][i]) * 1.6f;
+            bus[0][p][1][i] = (bus[0][p][1][i] + bus[1][p][1][i]) * 1.6f;
+        }
+        chorus_run((int)p, bus[0][p][0], bus[0][p][1], n);
+        pl[p] = bus[0][p][0];
+        pr[p] = bus[0][p][1];
     }
-    for (i = 0; i < n; i++) {            /* the voices' mix up to the effects' level */
-        buf_l[0][i] *= 1.8f;
-        buf_r[0][i] *= 1.8f;
-    }
-    fx_render(buf_l[0], buf_r[0], n);
+    fx_mix(pl, pr, out_l, out_r, n, FX.beat / SR, CFG->sc);
     if (FX.peak > out_peak)
         out_peak = FX.peak;
     FX.peak = 0.0f;
     for (i = 0; i < n; i++) {
-        lr[2 * i] = (int32_t)(buf_l[0][i] * gain);
-        lr[2 * i + 1] = (int32_t)(buf_r[0][i] * gain);
+        lr[2 * i] = (int32_t)(out_l[i] * gain);
+        lr[2 * i + 1] = (int32_t)(out_r[i] * gain);
     }
 }

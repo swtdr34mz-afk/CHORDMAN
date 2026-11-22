@@ -1,55 +1,96 @@
 /* SPDX-License-Identifier: MPL-2.0
  * Copyright (C) 2026 swtdr34mz (CHORDMAN) */
-/* CHORDMAN's master effects: the BBD-style chorus (the DCO's CHAR: I, II, I+II), the ping-pong delay (synced to
- * the tempo) and the reverb (four combs and two all-passes a side), both fed by SPACE; a soft limit at the end.
- * Part of dsp/engine.c. */
-#define CH_N 1024u                       /* the chorus: 23 ms of line */
-#define DL_N 24576u                      /* the delay, per side: 0.56 s (int16) */
-static float ch_buf[CH_N] PLAT_POOL;
+/* CHORDMAN's effects: the Juno's BBD chorus on each part that wants it (I, II, I+II: two delay lines on opposite
+ * triangles, darkened as a bucket brigade is), the sidechain (the parts ducked on a kick pattern, their volume or
+ * their filters), a ping-pong delay synced to the tempo, a plate-ish reverb, a soft limit. Part of dsp/engine.c. */
+#define CH_N 1024u
+#define DL_N 24576u
+static float ch_buf[NPARTS][CH_N] PLAT_POOL;
 static int16_t dl_l[DL_N] PLAT_POOL, dl_r[DL_N] PLAT_POOL;
-static float rv_c[8][1700] PLAT_POOL;    /* the reverb's combs (four a side) */
-static float rv_a[4][600] PLAT_POOL;     /* its all-passes (two a side) */
+static float rv_c[8][1700] PLAT_POOL;
+static float rv_a[4][700] PLAT_POOL;
 static const uint16_t RV_CN[8] = {1116, 1188, 1277, 1356, 1139, 1211, 1300, 1379};
 static const uint16_t RV_AN[4] = {556, 441, 579, 464};
 
+typedef struct {
+    uint32_t i;
+    float ph, rate, depth, mix, lp_l, lp_r;
+} chorus_t;
+static chorus_t CH[NPARTS];
+
 static struct {
-    uint32_t ci, di, rci[8], rai[4];
-    float cph, crate, cdepth, cmix;      /* the chorus's triangle, its rate (cycles a sample), depth (samples), mix */
-    float dtime, dtime_t, dfb, dsend;    /* the delay (samples, gliding), its feedback and send */
-    float rsend, rfb, rdamp, rlp[8];     /* the reverb's send, comb feedback, damping */
-    float hp_l, hp_r;                    /* a DC blocker on the output */
-    float peak;
+    uint32_t di, rci[8], rai[4];
+    float dtime, dtime_t, dfb;
+    float rlp[8];
+    float hp_l, hp_r, peak;
+    float duck;                          /* the sidechain's cut now (0..1) */
+    float since;                         /* samples since the last kick */
+    float beat;                          /* samples a beat */
+    uint32_t kick_at[8], nkick;          /* this block's kicks: where they fall */
 } FX;
 
-static const float DLY_BEATS[5] = {0.0f, 0.5f, 0.75f, 1.0f, 1.5f};   /* OFF, 1/8, 3/16, 1/4, 3/8 */
-const char *const DELAY_NAME[5] = {"OFF", "1/8", "3/16", "1/4", "3/8"};
-
-static void fx_block(const patch_t *p, const uint8_t *fx, float bpm)
+/* the sidechain's shape after a kick, t in beats: SOFT, PUMP, HARD, GATE */
+static float duck_shape(int shape, float t)
 {
-    float sp = knob(p->k[3]);
-    int ch = p->eng == E_DCO ? p->k[2] >> 5 : 0, dz = (fx[3] * 5) >> 7;
-    /* the chorus: the Juno's I and II and both at once */
-    if (ch == 1) {
-        FX.crate = 0.513f * ISR;
-        FX.cdepth = 80.0f;
-    } else if (ch == 2) {
-        FX.crate = 0.863f * ISR;
-        FX.cdepth = 110.0f;
-    } else if (ch == 3) {
-        FX.crate = 9.75f * ISR;
-        FX.cdepth = 14.0f;
+    switch (shape) {
+    case SH_SOFT:
+        return t < 0.5f ? 1.0f - t * t * 4.0f * (1.5f - t * 2.0f) : 0.0f;
+    case SH_HARD:
+        return t < 0.12f ? 1.0f : fm_expf(-(t - 0.12f) * 14.0f);
+    case SH_GATE:
+        return t < 0.45f ? 1.0f : 0.0f;
+    default:
+        return fm_expf(-t * 5.0f);
     }
-    FX.cmix += ((ch ? 0.5f : 0.0f) - FX.cmix) * 0.2f;
-    /* SPACE: the reverb first, the delay joins past the middle */
-    FX.rsend = sp < 0.5f ? sp * 0.7f : 0.35f + (sp - 0.5f) * 0.5f;
-    FX.rfb = 0.70f + sp * 0.18f;
-    FX.rdamp = 0.25f + (1.0f - sp) * 0.2f;
-    FX.dsend = dz && sp > 0.35f ? (sp - 0.35f) * 0.55f : 0.0f;
-    FX.dfb = 0.25f + sp * 0.3f;
-    if (dz) {
-        FX.dtime_t = DLY_BEATS[dz] * 60.0f / bpm * SR;
-        if (FX.dtime_t > (float)(DL_N - 4u))
-            FX.dtime_t = (float)(DL_N - 4u);
+}
+
+static void chorus_set(chorus_t *c, int mode)
+{
+    if (mode == 1) {                     /* the Juno's I and II and both */
+        c->rate = 0.513f * ISR;
+        c->depth = 78.0f;
+    } else if (mode == 2) {
+        c->rate = 0.863f * ISR;
+        c->depth = 110.0f;
+    } else if (mode == 3) {
+        c->rate = 9.75f * ISR;
+        c->depth = 12.0f;
+    }
+    c->mix += ((mode ? 0.55f : 0.0f) - c->mix) * 0.25f;
+}
+
+static inline float ch_tap(const float *b, float pos)
+{
+    uint32_t a;
+    float f;
+    pos += (float)CH_N;
+    a = (uint32_t)pos;
+    f = pos - (float)a;
+    return b[a % CH_N] + (b[(a + 1u) % CH_N] - b[a % CH_N]) * f;
+}
+
+static void chorus_run(int p, float *L, float *R, uint32_t n)
+{
+    chorus_t *c = &CH[p];
+    float *b = ch_buf[p];
+    uint32_t i;
+    if (c->mix < 0.002f)
+        return;
+    for (i = 0; i < n; i++) {
+        float m = 0.5f * (L[i] + R[i]), tri, w1, w2;
+        b[c->i] = m;
+        c->ph += c->rate;
+        if (c->ph >= 1.0f)
+            c->ph -= 1.0f;
+        tri = 2.0f * fm_fabsf(c->ph - 0.5f);
+        w1 = ch_tap(b, (float)c->i - 70.0f - c->depth * tri);
+        w2 = ch_tap(b, (float)c->i - 70.0f - c->depth * (1.0f - tri));
+        if (++c->i >= CH_N)
+            c->i = 0;
+        c->lp_l += (w1 - c->lp_l) * 0.45f;   /* the bucket brigade's darkness */
+        c->lp_r += (w2 - c->lp_r) * 0.45f;
+        L[i] = L[i] * (1.0f - c->mix * 0.45f) + c->lp_l * c->mix;
+        R[i] = R[i] * (1.0f - c->mix * 0.45f) + c->lp_r * c->mix;
     }
 }
 
@@ -70,7 +111,6 @@ static inline float allpass(float *b, uint32_t n, uint32_t *i, float in)
         *i = 0;
     return y - in;
 }
-
 static inline float dl_read(const int16_t *b, float pos)
 {
     uint32_t i0, i1;
@@ -83,69 +123,55 @@ static inline float dl_read(const int16_t *b, float pos)
     i1 = (i0 + 1u) % DL_N;
     return ((float)b[i0] + ((float)b[i1] - (float)b[i0]) * fr) * (1.0f / 32768.0f);
 }
-static inline int16_t to16(float x)
-{
-    x = fm_clampf(x, -0.999f, 0.999f) * 32767.0f;
-    return (int16_t)x;
-}
+static inline int16_t to16(float x) { return (int16_t)(fm_clampf(x, -0.999f, 0.999f) * 32767.0f); }
 
-/* the voices' mix (L, R) through the effects, in place */
-static void fx_render(float *L, float *R, uint32_t n)
+/* the parts (each a stereo bus, their sends) mixed through the delay and the reverb into L, R */
+static void fx_mix(float *pl[2], float *pr[2], float *L, float *R, uint32_t n, float beat_s, const uint8_t *sc)
 {
-    uint32_t i;
-    float pk = FX.peak;
+    uint32_t i, k;
+    float vol_duck = (sc[2] == ST_VOLUME || sc[2] == ST_BOTH) ? 1.0f : 0.0f;
+    float rl = PS[0].rev, rr = PS[1].rev, dlv = PS[0].dly, drv = PS[1].dly, pk = FX.peak;
+    FX.dtime_t = fm_minf(beat_s * 0.75f * SR, (float)(DL_N - 4u));   /* a dotted 8th */
+    FX.dfb = 0.35f;
+    float depth = (float)sc[0] * (1.0f / 127.0f), ib = 1.0f / (FX.beat > 1.0f ? FX.beat : 22050.0f), dtarget;
+    uint32_t kk = 0;
     for (i = 0; i < n; i++) {
-        float l = L[i], r = R[i], m = 0.5f * (l + r);
-        /* chorus: two taps on one line, their triangles opposite */
-        if (FX.cmix > 0.001f) {
-            float tri, d1, d2, w1, w2, p;
-            uint32_t a;
-            ch_buf[FX.ci] = m;
-            FX.cph += FX.crate;
-            if (FX.cph >= 1.0f)
-                FX.cph -= 1.0f;
-            tri = 2.0f * fm_fabsf(FX.cph - 0.5f);
-            d1 = 70.0f + FX.cdepth * tri;
-            d2 = 70.0f + FX.cdepth * (1.0f - tri);
-            p = (float)FX.ci - d1 + (float)CH_N;
-            a = (uint32_t)p;
-            w1 = ch_buf[a % CH_N] + (ch_buf[(a + 1u) % CH_N] - ch_buf[a % CH_N]) * (p - (float)a);
-            p = (float)FX.ci - d2 + (float)CH_N;
-            a = (uint32_t)p;
-            w2 = ch_buf[a % CH_N] + (ch_buf[(a + 1u) % CH_N] - ch_buf[a % CH_N]) * (p - (float)a);
-            if (++FX.ci >= CH_N)
-                FX.ci = 0;
-            l = l * (1.0f - FX.cmix * 0.5f) + w1 * FX.cmix;
-            r = r * (1.0f - FX.cmix * 0.5f) + w2 * FX.cmix;
-            m = 0.5f * (l + r);
+        float g;
+        if (kk < FX.nkick && FX.kick_at[kk] == i) {
+            FX.since = 0.0f;
+            kk++;
         }
-        /* the delay: ping-pong, the left tap feeding the right */
-        if (FX.dsend > 0.0f || FX.dtime > 1.0f) {
-            float dl, dr;
+        dtarget = FX.since < 4.0f * FX.beat ? depth * duck_shape(sc[1], FX.since * ib) : 0.0f;
+        FX.since += 1.0f;
+        FX.duck += (dtarget - FX.duck) * 0.08f;  /* (no click) */
+        g = 1.0f - FX.duck * vol_duck * 0.92f;
+        float l0 = pl[0][i] * g, r0 = pr[0][i] * g, l1 = pl[1][i] * g, r1 = pr[1][i] * g;
+        float l = l0 + l1, r = r0 + r1;
+        float rin = (l0 + r0) * rl + (l1 + r1) * rr, din = (l0 + r0) * dlv + (l1 + r1) * drv;
+        /* the delay: ping-pong */
+        if (din != 0.0f || FX.dtime > 2.0f) {
+            float a, b;
             FX.dtime += (FX.dtime_t - FX.dtime) * 0.0005f;
-            dl = dl_read(dl_l, (float)FX.di - FX.dtime);
-            dr = dl_read(dl_r, (float)FX.di - FX.dtime);
-            dl_l[FX.di] = to16(m * FX.dsend + dr * FX.dfb);
-            dl_r[FX.di] = to16(dl * FX.dfb);
+            a = dl_read(dl_l, (float)FX.di - FX.dtime);
+            b = dl_read(dl_r, (float)FX.di - FX.dtime);
+            dl_l[FX.di] = to16(din * 0.5f + b * FX.dfb);
+            dl_r[FX.di] = to16(a * FX.dfb);
             if (++FX.di >= DL_N)
                 FX.di = 0;
-            l += dl;
-            r += dr;
+            l += a;
+            r += b;
+            rin += (a + b) * 0.3f;
         }
         /* the reverb */
-        if (FX.rsend > 0.0f) {
-            float in = m * FX.rsend * 0.3f, cl = 0.0f, cr = 0.0f;
-            uint32_t k;
+        {
+            float in = rin * 0.12f, cl = 0.0f, cr = 0.0f;
             for (k = 0; k < 4u; k++) {
-                cl += comb(rv_c[k], RV_CN[k], &FX.rci[k], &FX.rlp[k], in, FX.rfb, FX.rdamp);
-                cr += comb(rv_c[k + 4], RV_CN[k + 4], &FX.rci[k + 4], &FX.rlp[k + 4], in, FX.rfb, FX.rdamp);
+                cl += comb(rv_c[k], RV_CN[k], &FX.rci[k], &FX.rlp[k], in, 0.84f, 0.3f);
+                cr += comb(rv_c[k + 4], RV_CN[k + 4], &FX.rci[k + 4], &FX.rlp[k + 4], in, 0.84f, 0.3f);
             }
-            cl = allpass(rv_a[1], RV_AN[1], &FX.rai[1], allpass(rv_a[0], RV_AN[0], &FX.rai[0], cl));
-            cr = allpass(rv_a[3], RV_AN[3], &FX.rai[3], allpass(rv_a[2], RV_AN[2], &FX.rai[2], cr));
-            l += cl;
-            r += cr;
+            l += allpass(rv_a[1], RV_AN[1], &FX.rai[1], allpass(rv_a[0], RV_AN[0], &FX.rai[0], cl));
+            r += allpass(rv_a[3], RV_AN[3], &FX.rai[3], allpass(rv_a[2], RV_AN[2], &FX.rai[2], cr));
         }
-        /* DC out, and a soft limit */
         FX.hp_l += (l - FX.hp_l) * 0.0005f;
         FX.hp_r += (r - FX.hp_r) * 0.0005f;
         l = sat(l - FX.hp_l);
@@ -156,4 +182,5 @@ static void fx_render(float *L, float *R, uint32_t n)
         R[i] = r;
     }
     FX.peak = pk;
+    FX.nkick = 0;
 }

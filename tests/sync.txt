@@ -33,15 +33,23 @@ expect voices 0
 usbh midi FC 00 00
 wait 30
 expect playing 0
-# a chord with the groove, in time with the clock
+# a chord in its groove, in time with the clock; the sidechain follows the kicks
+turn K1 0
 tap HOME
-turn SELECT 1
-key 7 down
+key 12 down
 wait 30
+tap FX
+turn K1 60
+wait 30
+expect sc 60
+tap HOME
 usbh midi FA 00 00
-usbh clock 48 20
+usbh clock 25 20
+expect ticks 25
+expect duck100 >20
+usbh clock 23 20
 expect notes >3
-key 7 up
+key 12 up
 usbh midi FC 00 00
 usbh unplug
 wait 50

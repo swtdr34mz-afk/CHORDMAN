@@ -1,0 +1,61 @@
+/* SPDX-License-Identifier: MPL-2.0
+ * Copyright (C) 2026 swtdr34mz (CHORDMAN) */
+/* CHORDMAN's chord sets: twenty moods, eight chords each (the first four the progression, the next four its bridge
+ * and turnaround), and each chord coloured (its black key: a 7th, a 9th, a sus ...). Five more the game unlocks.
+ * The chords are written by name; the engine reads them (chords.c) and voices them. Part of dsp/engine.c. */
+const char *const SCALE_NAME[NSCALES] = {"MAJOR", "MINOR", "DORIAN", "LYDIAN", "PHRYGIAN", "HARM MINOR", "MIXO"};
+const char *const NOTE_NAME[12] = {"C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"};
+
+const chordset_t SETS[NSETS] = {
+    {"HAPPY", 0, SC_MAJOR, {"C", "G", "Am", "F", "Dm7", "Em7", "Fmaj7", "G"},
+     {"Cadd9", "Gsus4", "Am7", "Fadd9", "Dm9", "Em9", "Fmaj9", "G7"}},
+    {"SUNSHINE", 7, SC_MAJOR, {"G", "D", "Em", "C", "Am7", "Bm7", "Cmaj7", "D/F#"},
+     {"Gadd9", "Dsus4", "Em7", "Cadd9", "Am9", "Bm7", "Cmaj9", "D7"}},
+    {"HEARTBREAK", 9, SC_MINOR, {"Am", "F", "C", "G", "Dm", "Em7", "Fmaj7", "G/B"},
+     {"Am7", "Fmaj7", "Cadd9", "Gsus4", "Dm7", "E7", "Fmaj9", "G6"}},
+    {"MELANCHOLY", 2, SC_MINOR, {"Dm", "Bb", "F", "C", "Gm", "Am", "Bbmaj7", "C/E"},
+     {"Dm9", "Bbmaj7", "Fadd9", "Csus4", "Gm7", "A7", "Bbmaj9", "C7"}},
+    {"DRAMATIC", 9, SC_HARMONIC, {"Am", "G", "F", "E", "Dm", "E7", "Am/C", "F"},
+     {"Am7", "Gsus4", "Fmaj7", "E7b9", "Dm7", "E7sus4", "Am9", "Fmaj9"}},
+    {"EPIC MOVIE", 0, SC_MINOR, {"Cm", "Ab", "Eb", "Bb", "Fm", "Gsus4", "Abmaj7", "G"},
+     {"Cm9", "Abmaj7", "Ebadd9", "Bbsus4", "Fm9", "G7sus4", "Abmaj9", "G7"}},
+    {"HERO", 0, SC_MIXO, {"C", "Ab", "Bb", "F", "Am", "Em", "Dm", "G"},
+     {"Csus2", "Abmaj7", "Bbsus2", "Fadd9", "Am7", "Em7", "Dm9", "Gsus4"}},
+    {"WONDER", 0, SC_MAJOR, {"C", "E", "F", "Fm", "Am", "Ab", "Dm7", "G"},
+     {"Cmaj7", "E7", "Fmaj7", "Fm6", "Am9", "Abmaj7", "Dm9", "G13"}},
+    {"80s NOSTALGIA", 0, SC_MAJOR, {"F", "G", "Em", "Am", "Dm", "G", "C", "E7"},
+     {"Fmaj7", "G6", "Em7", "Am9", "Dm7", "Gsus4", "Cmaj7", "E7b9"}},
+    {"FIFTIES", 0, SC_MAJOR, {"C", "Am", "F", "G", "Em", "Dm7", "G7", "C7"},
+     {"C6", "Am7", "Fmaj7", "G7", "Em7", "Dm9", "G9", "C9"}},
+    {"DREAM", 7, SC_LYDIAN, {"Cmaj7", "D/C", "Am7", "Bm7", "Em9", "D", "Gmaj7", "F#m7"},
+     {"Cmaj9", "D6", "Am9", "Bm9", "Em7", "Dsus2", "Gmaj9", "F#m9"}},
+    {"LOFI", 0, SC_MAJOR, {"Dm9", "G13", "Cmaj9", "A7b9", "Fmaj9", "Fm6", "Em7", "A7"},
+     {"Dm11", "G7b9", "Cmaj7", "A7#5", "Fmaj7", "Fm9", "Em9", "A13"}},
+    {"NEO SOUL", 5, SC_MAJOR, {"Fmaj9", "Em7", "Dm9", "Cmaj9", "Bbmaj7", "A7", "Gm9", "C13"},
+     {"Fmaj7", "Em9", "Dm11", "Cmaj7", "Bbmaj9", "A7b9", "Gm11", "C9sus4"}},
+    {"GOSPEL", 0, SC_MAJOR, {"C", "C/E", "F", "F#dim7", "C/G", "Am7", "Fm6", "G13"},
+     {"Cadd9", "C6/E", "Fmaj7", "F#m7b5", "Cmaj7/G", "Am9", "Fm9", "G7b9"}},
+    {"DARK", 0, SC_PHRYGIAN, {"Cm", "Db", "Ab", "G", "Fm", "Bbm", "Ebm", "G7"},
+     {"Cm9", "Dbmaj7", "Abmaj7", "G7b9", "Fm9", "Bbm7", "Ebm7", "Gaug"}},
+    {"MYSTERY", 9, SC_HARMONIC, {"Am", "Am/G", "Fm", "E", "Dm", "Bb", "Dm6", "E7"},
+     {"Am9", "Am7/G", "Fm6", "E7b9", "Dm9", "Bbmaj7", "Dm6", "E7#5"}},
+    {"FUNK", 2, SC_DORIAN, {"Dm7", "G9", "Em7", "A7", "Fmaj7", "C7", "Bb7", "A7#9"},
+     {"Dm9", "G13", "Em9", "A9", "Fmaj9", "C9", "Bb9", "A7b9"}},
+    {"HOUSE", 9, SC_MINOR, {"Am7", "Fmaj7", "Cmaj7", "G6", "Dm9", "Em7", "Fmaj9", "G"},
+     {"Am9", "Fmaj9", "Cmaj9", "Gadd9", "Dm11", "Em9", "Fmaj7", "G7sus4"}},
+    {"TRANCE", 9, SC_MINOR, {"Am", "G", "F", "Em", "Dm", "C", "Fmaj7", "Esus4"},
+     {"Asus2", "Gadd9", "Fadd9", "Em7", "Dm7", "Cadd9", "Fmaj9", "E7"}},
+    {"BLUES", 9, SC_MIXO, {"A7", "D7", "E7", "D9", "F#m7", "Bm7", "C#7", "E9"},
+     {"A9", "D9", "E7#9", "D13", "F#m9", "Bm9", "C#7b9", "E13"}},
+    /* the secret ones */
+    {"MIDNIGHT", 1, SC_MINOR, {"C#m9", "Amaj7", "E", "B6", "F#m9", "G#7", "Amaj9", "B"},
+     {"C#m11", "Amaj9", "Eadd9", "Bsus2", "F#m11", "G#7b9", "A6", "B9sus4"}},
+    {"TOKYO NIGHT", 0, SC_MAJOR, {"Fmaj7", "E7", "Am7", "Gm7", "C7", "Dm7", "Bbmaj7", "E7#9"},
+     {"Fmaj9", "E7b9", "Am9", "Gm9", "C9", "Dm9", "Bbmaj9", "E7b9"}},
+    {"SPACE", 2, SC_LYDIAN, {"Dmaj7", "E/D", "Bm9", "C#m7", "Gmaj7", "A6", "F#m7", "E"},
+     {"Dmaj9", "E6", "Bm11", "C#m9", "Gmaj9", "Asus2", "F#m9", "Esus2"}},
+    {"SUNRISE", 2, SC_MAJOR, {"D", "A/C#", "Bm", "G", "Em7", "F#m", "Gmaj7", "Asus4"},
+     {"Dadd9", "A6", "Bm7", "Gadd9", "Em9", "F#m7", "Gmaj9", "A7"}},
+    {"GAME OVER", 4, SC_MINOR, {"Em", "C", "Am", "B", "G", "D", "Cmaj7", "B7"},
+     {"Em9", "Cmaj7", "Am9", "B7b9", "Gadd9", "Dsus2", "Cmaj9", "B7#5"}},
+};
