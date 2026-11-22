@@ -1,0 +1,25 @@
+# CHORDMAN build settings (fm1-base tools/build.py). For a local build: python3 fm1-base/tools/build.py . --host
+name = "chordman"                 # the build's file names: chordman-0.1.fwsc, build/host/chordman_host
+title = "CHORDMAN"                # the name people see (firmware hubs)
+id_prefix = "FM-1_576"            # package identity: dev FM-1_57600, releases FM-1_576 + XXYYZZ (SIX MACHINES 574)
+usb_manufacturer = "swtdr34mz"
+usb_product = "CHORDMAN FM-1"     # the USB name (the MIDI port in a DAW)
+o2 = ["dsp/engine.c"]             # the sound engine and the player, at -O2
+include = ["dsp"]
+vendored = ["fm1-base/"]          # fm1-base is a submodule inside the app: its own checks are its own
+words = "words.tsv"
+font_full = ["L", "M"]            # the chord names need lower case in the big faces (Dm7, Cadd9)
+ble = false
+usb_host = true                   # GLOBAL > USB HOST: another FM-1 (or any USB-MIDI device) on the cable
+backup = true                     # backup and restore of the settings
+cpu2 = true                       # the second core renders half the voices
+cpu2_fallback = true              # if it fails on an FM-1: one core on, no restart
+tagline = "A chord performance synth: four analog engines, the J-6's chords and grooves"
+repo = "https://github.com/swtdr34mz-afk/CHORDMAN"
+licence = "MPL-2.0"
+credits = "Built on fm1-base (Charles Vestal) and felucca-bsp (Leo Kuroshita, Hügelton Instruments)."
+author = "swtdr34mz"
+description = "A minimal chord performance synth. Four analog-style engines (DCO with BBD chorus, VCO with poly mod, a morphing state-variable SVF, a driven LADDER), eight voices, 32 sounds. The Roland J-6's 100 chord sets on the lower twelve keys, a melody that follows the chord's scale on the upper fifteen, the J-6's nine groove styles with twelve variations each, a chord sequencer, voicing, strum and swing. Follows MIDI clock, START, STOP and CONTINUE over USB, from a computer or from another FM-1 with CHORDMAN as its USB host."
+tags = ["synth", "chords", "sequencer"]
+install = "https://github.com/swtdr34mz-afk/CHORDMAN/releases"
+screenshot = "site/img/screen-home.png"

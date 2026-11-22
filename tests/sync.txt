@@ -1,0 +1,52 @@
+# CHORDMAN follows a clock: from a computer, and from another FM-1 on its USB port (CHORDMAN as the USB host)
+wait 600
+# a computer's clock and START: the transport runs at its tempo
+midi FA 00 00
+clock 48 21
+expect ext 1
+expect playing 1
+expect ticks >40
+midi FC 00 00
+wait 30
+expect playing 0
+wait 600
+expect ext 0
+# USB HOST on (GLOBAL, K4), another FM-1 plugged in that leads: START, clocks, STOP
+tap GLO
+expect page 5
+turn K4 1
+wait 30
+expect usbhost 1
+usbh plug SIX_MACHINES_FM-1
+wait 300
+shot host.png
+usbh midi FA 00 00
+usbh clock 96 20
+expect ext 1
+expect playing 1
+expect ticks >90
+shot linked.png
+# its kick on channel 10 plays no note here
+usbh midi 99 24 7F
+wait 30
+expect voices 0
+usbh midi FC 00 00
+wait 30
+expect playing 0
+# a chord with the groove, in time with the clock
+tap HOME
+turn SELECT 1
+key 7 down
+wait 30
+usbh midi FA 00 00
+usbh clock 48 20
+expect notes >3
+key 7 up
+usbh midi FC 00 00
+usbh unplug
+wait 50
+# off again: back to a computer's device
+tap GLO
+turn K4 -1
+wait 30
+expect usbhost 0

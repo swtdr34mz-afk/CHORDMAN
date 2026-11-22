@@ -1,0 +1,9 @@
+{
+  "what": "A chord performance synth: four analog-style engines (DCO with chorus, VCO with poly mod, a morphing SVF, a driven LADDER), the Roland J-6's 100 chord sets on the lower keys, a melody that follows the chord on the upper keys, the J-6's grooves, a chord sequencer, and MIDI clock and transport in over USB, from a computer or from another FM-1 (SIX MACHINES) with CHORDMAN as its USB host.",
+  "author": "swtdr34mz",
+  "kinds": "synth",
+  "play": "https://swtdr34mz-afk.github.io/CHORDMAN/emu/",
+  "image": "site/img/screen-home.png",
+  "color": "#FFAA28",
+  "sounds": "none"
+}

@@ -1,0 +1,165 @@
+# CHORDMAN in the host simulator:
+#   python3 fm1-base/tools/build.py . --host, then build/host/chordman_host tests/basic.txt build/host
+wait 600
+shot boot.png
+expect page 0
+expect set 27
+expect chords 1
+expect preset 0
+# a chord key: C (key 7 is C4) plays set 27's C, four notes
+key 7 down
+wait 60
+expect slot 0
+expect voices 3
+expect note0 48
+shot chord.png
+wav chord.wav
+wait 1500
+wavstop
+expect peak_db_min -30
+key 7 up
+wait 60
+expect slot -1
+# HOLD: the chord stays
+tap ARP
+expect hold 1
+key 9 down
+wait 40
+key 9 up
+wait 40
+expect slot 2
+tap ARP
+wait 40
+expect slot -1
+# the groove: SELECT on, ARP 8TH UP 1
+turn SELECT 1
+wait 40
+expect groove 1
+expect style 1
+expect var 1
+shot groove.png
+turn SELECT -1
+wait 1700
+key 7 down
+wav arp.wav
+wait 2000
+wavstop
+key 7 up
+expect notes >8
+# the chord set: ALGORITHM
+turn ALGO 1
+wait 30
+expect set 28
+shot set.png
+wait 1700
+# key: OCT+ held and ALGORITHM; the octave is not stepped
+press OCT+
+turn ALGO 2
+release OCT+
+wait 30
+expect key 2
+expect octave 0
+tap OCT-
+wait 30
+expect octave -1
+press OCT-
+press OCT+
+release OCT-
+release OCT+
+wait 30
+expect octave 0
+expect key 0
+# a sound
+turn PRESET 1
+wait 30
+expect preset 1
+turn PRESET -1
+turn K1 5
+wait 30
+expect k1 75
+tap ENV
+expect page 2
+shot env.png
+tap ENV
+expect page 0
+tap EDIT
+shot edit.png
+tap HOME
+expect page 0
+# the four engines, a chord each
+turn PRESET 8
+wait 1700
+key 7 down
+wav vco.wav
+wait 1200
+wavstop
+key 7 up
+turn PRESET 8
+wait 1700
+key 7 down
+wav svf.wav
+wait 1200
+wavstop
+key 7 up
+turn PRESET 8
+wait 1700
+shot ladder.png
+key 7 down
+wav ladder.wav
+wait 1200
+wavstop
+key 7 up
+expect peak_db_min -30
+turn PRESET -24
+# a melody key follows the chord
+key 9 down
+key 20 down
+wait 60
+expect voices >1
+key 20 up
+key 9 up
+wait 100
+# the sequencer: step recording, C, D, tie, rest
+tap REC
+expect rec 1
+key 7 down
+wait 30
+key 7 up
+wait 30
+key 9 down
+wait 30
+key 9 up
+wait 30
+tap ARP
+tap SEL
+wait 30
+expect seqlen 4
+expect seq0 0
+expect seq1 2
+expect seq2 254
+expect seq3 255
+tap REC
+expect rec 0
+tap SEQ
+expect groove 0
+tap PLAY
+wait 100
+expect playing 1
+expect slot 0
+shot seq.png
+wait 2100
+expect step 1
+expect slot 2
+tap PLAY
+wait 50
+expect playing 0
+expect clocks_sent >40
+# SAVE, and after a power cycle it is all there
+tap SAVE
+wait 30
+expect dirty 0
+reboot
+wait 600
+expect seqlen 4
+expect set 28
+expect k1 75
