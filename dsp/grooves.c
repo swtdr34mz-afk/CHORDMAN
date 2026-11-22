@@ -13,6 +13,9 @@ const char *const SHAPE_NAME[NSHAPES] = {"SOFT", "PUMP", "HARD", "GATE"};
 const char *const SCTGT_NAME[NSCTGT] = {"VOLUME", "FILTER", "BOTH"};
 const char *const SKICK_NAME[NSKICK] = {"4/4", "HALF", "2 + 4", "TRAP"};
 const char *const SYNC_NAME[NSYNCS] = {"AUTO", "INT", "EXT"};
+const char *const LRATE_NAME[NLRATES] = {"4 BARS", "2 BARS", "1 BAR", "1/2", "1/4", "1/8", "1/16", "1/32"};
+const char *const LWAVE_NAME[NLWAVES] = {"SINE", "TRIANGLE", "SAW", "REV SAW", "SQUARE", "S + H"};
+const char *const LTGT_NAME[NLTGTS] = {"FILTER", "PITCH", "AMP", "PWM"};
 
 static const char *const CR_PAT[NCRHY] = {
     "C---------------", "C--.C--.C--.C--.", "C.c.C.c.C.c.C.c.", "..C...C...C...C.", "CcccCcccCcccCccc",

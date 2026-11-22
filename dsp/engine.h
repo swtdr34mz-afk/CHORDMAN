@@ -81,8 +81,16 @@ typedef struct {                         /* a part's sound as the player left it
     uint8_t snd;                         /* SOUNDS[] */
     uint8_t k[4];                        /* TONE, MOTION, CHAR, SPACE (64: as designed) */
     uint8_t env[4];                      /* ATTACK, DECAY, SUSTAIN, RELEASE */
+    uint8_t lfo[4];                      /* LFO: RATE (LR_*), DEPTH 0..127, WAVE (LW_*), TARGET (LT_*) */
     uint8_t rsv[3];
 } part_t;
+/* the LFO, in time with the clock: its rate a note length, its wave, what it moves */
+enum { LR_4BAR, LR_2BAR, LR_1BAR, LR_HALF, LR_4TH, LR_8TH, LR_16TH, LR_32ND, NLRATES };
+enum { LW_SINE, LW_TRI, LW_SAW, LW_REVSAW, LW_SQUARE, LW_SH, NLWAVES };
+enum { LT_FILTER, LT_PITCH, LT_AMP, LT_PWM, NLTGTS };
+extern const char *const LRATE_NAME[NLRATES];
+extern const char *const LWAVE_NAME[NLWAVES];
+extern const char *const LTGT_NAME[NLTGTS];
 
 typedef struct {                         /* what the engine reads (the app's settings) */
     uint8_t mode;                        /* MODE_* */
@@ -103,7 +111,7 @@ void eng_changed(void);                  /* a sound changed (a knob, a preset): 
 void eng_rechord(void);                  /* the set, key, octave, mode or groove changed: the chord again */
 /* the chord asked for: 0..7 of the set, flavor 1 the coloured one; -1 none (the app latches it for HOLD) */
 void eng_chord(int idx, int flavor, int vel);
-/* CHORD mode: the bass note the left keys hold (MIDI), -1: the chord's root */
+/* CHORD mode: the bass note the left keys hold (MIDI), -1: none (the bass plays only while a left key asks) */
 void eng_bass_note(int note);
 /* notes played straight on a part (the lead, MIDI in) */
 void eng_note_on(int part, int note, int vel);

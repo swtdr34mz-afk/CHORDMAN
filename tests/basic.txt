@@ -7,13 +7,13 @@ expect mode 0
 expect set 3
 expect sndr 0
 expect sndl 10
-# CHORD mode: the right white keys are the set's chords (HEARTBREAK: Am F C G ...), the bass arp follows
+# CHORD mode: the right white keys are the set's chords (HEARTBREAK: Am F C G ...); the bass only from the left
 key 12 down
 wait 80
 expect chord 0
 expect flavor 0
-expect bass 33
-expect voices >3
+expect bass -1
+expect voices >2
 shot chord.png
 wav juno_chords.wav
 wait 2000
@@ -36,7 +36,7 @@ expect chord 1
 expect bass 35
 key 2 up
 wait 40
-expect bass 41
+expect bass -1
 key 14 up
 wait 40
 # HOLD
@@ -72,9 +72,14 @@ tap EDIT
 expect focus 0
 tap EDIT
 expect page 0
-tap LFO
+tap SEQ
 expect page 3
 shot groove.png
+tap LFO
+expect page 6
+turn K3 3
+wait 30
+shot lfo.png
 tap FX
 expect page 4
 turn K1 20

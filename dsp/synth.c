@@ -79,6 +79,8 @@ typedef struct {
     float oph[6], oenv[6], fbmem;
     uint8_t ostage;
     float pan;
+    float outl, outr;                    /* its last output (a stolen voice fades that out: no click) */
+    float taill, tailr;
 } voice_t;
 static voice_t V[NV];
 
@@ -93,6 +95,8 @@ typedef struct {                         /* a part's sound, worked out at a bloc
     float rev, dly;                      /* SPACE: the sends */
     float level;
     float duck_oct;                      /* the sidechain's pull on the filter (octaves, negative) */
+    int lfo_tgt, lfo_wave, lfo_rate;
+    float lfo_depth;
 } psnd_t;
 static psnd_t PS[NPARTS];
 static uint32_t vage, notes_played, chunk_at;
@@ -118,6 +122,10 @@ static void psnd_from(int p, const part_t *pt)
     q->dly = pt->k[3] > 70 ? (float)(pt->k[3] - 70) * (0.45f / 57.0f) : 0.0f;
     q->chorus = 0;
     q->level = 1.0f;
+    q->lfo_rate = pt->lfo[0] < NLRATES ? pt->lfo[0] : LR_4TH;
+    q->lfo_depth = knob(pt->lfo[1]);
+    q->lfo_wave = pt->lfo[2] < NLWAVES ? pt->lfo[2] : 0;
+    q->lfo_tgt = pt->lfo[3] < NLTGTS ? pt->lfo[3] : 0;
     if (s->type == T_FM) {
         q->idx_scale = fm_exp2f(t / 40.0f);
         q->dec_scale = fm_exp2f(((float)pt->env[1] - 64.0f) / 32.0f);
@@ -167,11 +175,14 @@ static voice_t *voice_take(int part)
     for (i = 0; i < NV; i++)
         if (!V[i].amp.stage)
             return &V[i];
-    for (i = 0; i < NV; i++)             /* the oldest released, of this part first */
-        if (V[i].amp.stage == 3 && V[i].age < old) {
-            old = V[i].age;
-            pick = (int)i;
-        }
+    {                                    /* the quietest released one */
+        float lo = 2.0f;
+        for (i = 0; i < NV; i++)
+            if (V[i].amp.stage == 3 && V[i].amp.v < lo) {
+                lo = V[i].amp.v;
+                pick = (int)i;
+            }
+    }
     if (pick >= 0)
         return &V[pick];
     for (i = 0; i < NV; i++)
@@ -218,6 +229,10 @@ static void voice_on(int part, int note, float vel, int owner, uint32_t wait)
             if (V[i].part == part && V[i].amp.stage && V[i].amp.stage != 3)
                 V[i].amp.stage = 3;
     v = voice_take(part);
+    if (v->amp.stage) {                  /* taken while it sounds: what it played fades out over a few ms */
+        v->taill += v->outl;
+        v->tailr += v->outr;
+    }
     v->part = (uint8_t)part;
     v->owner = (uint8_t)owner;
     v->note = (int16_t)note;
@@ -306,7 +321,7 @@ static inline float env_step(env_t *e, float a_inc, float d_k, float sus, float 
 }
 
 /* an analog voice into L / R */
-static void render_analog(voice_t *v, const psnd_t *q, float *L, float *R, uint32_t n, const float *lfo)
+static void render_analog(voice_t *v, const psnd_t *q, float *L, float *R, uint32_t n, const float *lfo, const float *ulfo)
 {
     const sound_t *s = q->s;
     uint32_t c, i;
@@ -314,9 +329,16 @@ static void render_analog(voice_t *v, const psnd_t *q, float *L, float *R, uint3
     float r2 = fm_exp2f(s->o2_semi / 12.0f) * q->detune_ratio, r3 = fm_exp2f(s->o3_semi / 12.0f);
     float r1 = q->type == T_OB ? 1.0f / q->detune_ratio : 1.0f;
     for (c = 0; c < n; c += CHUNK) {
-        float l = lfo[c / CHUNK], vib = 0.0f, oct, fc, w, g, G, G2, G4, k, pw, pm, keyo;
+        float l = lfo[c / CHUNK], u = ulfo[c / CHUNK] * q->lfo_depth, vib = 0.0f, oct, fc, w, g, G, G2, G4, k, pw, pm,
+              keyo, ag = 1.0f;
         if (v->wait >= CHUNK) {
             v->wait -= CHUNK;
+            for (i = c; i < c + CHUNK; i++) {    /* (what it played before still fades) */
+                L[i] += v->taill;
+                R[i] += v->tailr;
+                v->taill *= 0.992f;
+                v->tailr *= 0.992f;
+            }
             continue;
         }
         /* pitch: glide, drift (a slow walk), vibrato after its delay */
@@ -324,11 +346,16 @@ static void render_analog(voice_t *v, const psnd_t *q, float *L, float *R, uint3
         v->vib_t += (float)CHUNK * ISR;
         if (s->vib > 0.0f && v->vib_t > s->vib_delay)
             vib = l * s->vib * fm_minf((v->vib_t - s->vib_delay) * 2.0f, 1.0f);
+        if (q->lfo_tgt == LT_PITCH)
+            vib += u * 2.0f;
         pm = fm_exp2f((v->drift + v->dwalk) * (1.0f / 1200.0f) + vib * (1.0f / 12.0f));
-        pw = fm_clampf(s->pw - l * s->pwm * 0.4f, 0.06f, 0.5f);
+        pw = fm_clampf(s->pw - l * s->pwm * 0.4f - (q->lfo_tgt == LT_PWM ? u * 0.4f : 0.0f), 0.06f, 0.5f);
+        if (q->lfo_tgt == LT_AMP)
+            ag = 1.0f - q->lfo_depth * 0.5f + u * 0.5f;
         /* the filter: its envelope, the key, the sidechain; at twice the rate */
         keyo = ((float)v->note - 60.0f) * s->keytrk / 12.0f;
-        oct = q->cut_oct + v->flt.v * q->fenv * (0.65f + 0.35f * v->vel) + keyo + q->duck_oct;
+        oct = q->cut_oct + v->flt.v * q->fenv * (0.65f + 0.35f * v->vel) + keyo + q->duck_oct +
+              (q->lfo_tgt == LT_FILTER ? u * 3.0f : 0.0f);
         oct = fm_clampf(oct, 4.3f, 14.2f);
         fc = fm_exp2f(oct);
         w = fc * (3.14159265f * 0.5f * ISR);
@@ -344,6 +371,10 @@ static void render_analog(voice_t *v, const psnd_t *q, float *L, float *R, uint3
             int h;
             if (v->wait) {
                 v->wait--;
+                L[i] += v->taill;
+                R[i] += v->tailr;
+                v->taill *= 0.992f;
+                v->tailr *= 0.992f;
                 continue;
             }
             e = env_step(&v->amp, q->a_inc, q->d_k, q->sus, q->r_k);
@@ -408,9 +439,13 @@ static void render_analog(voice_t *v, const psnd_t *q, float *L, float *R, uint3
                 }
                 ya += y;
             }
-            y = ya * 0.5f * e * (0.6f + 0.4f * v->vel);
-            L[i] += y * gl;
-            R[i] += y * gr;
+            y = ya * 0.5f * e * ag * (0.6f + 0.4f * v->vel);
+            v->outl = y * gl;
+            v->outr = y * gr;
+            L[i] += v->outl + v->taill;
+            R[i] += v->outr + v->tailr;
+            v->taill *= 0.992f;
+            v->tailr *= 0.992f;
         }
         if (!v->amp.stage)
             break;
@@ -418,7 +453,7 @@ static void render_analog(voice_t *v, const psnd_t *q, float *L, float *R, uint3
 }
 
 /* an FM voice: algorithm 5, three pairs (2 -> 1, 4 -> 3, 6 -> 5, 6 feeding back) */
-static void render_fm(voice_t *v, const psnd_t *q, float *L, float *R, uint32_t n)
+static void render_fm(voice_t *v, const psnd_t *q, float *L, float *R, uint32_t n, const float *ulfo)
 {
     const sound_t *s = q->s;
     uint32_t c, i, o;
@@ -438,14 +473,31 @@ static void render_fm(voice_t *v, const psnd_t *q, float *L, float *R, uint32_t 
         }
     }
     for (c = 0; c < n; c += CHUNK) {
+        float u = ulfo[c / CHUNK] * q->lfo_depth, im = 1.0f, ag = 1.0f, pmul = 1.0f;
         if (v->wait >= CHUNK) {
             v->wait -= CHUNK;
+            for (i = c; i < c + CHUNK; i++) {    /* (what it played before still fades) */
+                L[i] += v->taill;
+                R[i] += v->tailr;
+                v->taill *= 0.992f;
+                v->tailr *= 0.992f;
+            }
             continue;
         }
+        if (q->lfo_tgt == LT_FILTER || q->lfo_tgt == LT_PWM)
+            im = fm_maxf(1.0f + u, 0.0f);        /* the brightness */
+        else if (q->lfo_tgt == LT_AMP)
+            ag = 1.0f - q->lfo_depth * 0.5f + u * 0.5f;
+        else
+            pmul = fm_exp2f(u * 2.0f / 12.0f);
         for (i = c; i < c + CHUNK; i++) {
             float m2, m4, m6, y, ea;
             if (v->wait) {
                 v->wait--;
+                L[i] += v->taill;
+                R[i] += v->tailr;
+                v->taill *= 0.992f;
+                v->tailr *= 0.992f;
                 continue;
             }
             /* the envelopes: one attack for all, each its own decay to its sustain, one release */
@@ -472,19 +524,24 @@ static void render_fm(voice_t *v, const psnd_t *q, float *L, float *R, uint32_t 
                 break;
             }
             for (o = 0; o < 6; o++) {
-                v->oph[o] += inc[o];
+                v->oph[o] += inc[o] * pmul;
                 if (v->oph[o] >= 1.0f)
                     v->oph[o] -= 1.0f;
             }
             m6 = sinp(v->oph[5] + v->fbmem * s->fb * 0.25f) * v->oenv[5] * lvl[5];
             v->fbmem = 0.5f * (v->fbmem + m6 / (lvl[5] > 0.0001f ? lvl[5] : 1.0f));
-            m2 = sinp(v->oph[1]) * v->oenv[1] * lvl[1];
-            m4 = sinp(v->oph[3]) * v->oenv[3] * lvl[3];
+            m6 *= im;
+            m2 = sinp(v->oph[1]) * v->oenv[1] * lvl[1] * im;
+            m4 = sinp(v->oph[3]) * v->oenv[3] * lvl[3] * im;
             y = sinp(v->oph[0] + m2) * v->oenv[0] * lvl[0] + sinp(v->oph[2] + m4) * v->oenv[2] * lvl[2] +
                 sinp(v->oph[4] + m6) * v->oenv[4] * lvl[4];
-            y *= 0.55f;
-            L[i] += y * gl;
-            R[i] += y * gr;
+            y *= 0.55f * ag;
+            v->outl = y * gl;
+            v->outr = y * gr;
+            L[i] += v->outl + v->taill;
+            R[i] += v->outr + v->tailr;
+            v->taill *= 0.992f;
+            v->tailr *= 0.992f;
         }
         if (!v->amp.stage)
             break;

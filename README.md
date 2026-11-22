@@ -3,7 +3,7 @@
 A chord performance synth for the M-VAVE FM-1 by **swtdr34mz**. The keyboard is split: chords in a groove on the
 right and a bass arp on the left, or a lead locked to the scale over the chords. Seven sounds after classic synths,
 twenty chord sets by mood, a sidechain that makes room for the kick, MIDI clock in over USB, and CHORD MAN, an arcade
-game under every screen that rewards playing in time. Built on [fm1-base](https://github.com/charlesvestal/fm1-base)
+drive under every screen that rewards playing in time. Built on [fm1-base](https://github.com/charlesvestal/fm1-base)
 and [felucca-bsp](https://github.com/hugelton/felucca-bsp).
 
 ![Chords and bass](site/img/screen-home.png) ![Lead over chords](site/img/screen-lead.png)
@@ -18,11 +18,11 @@ upper fifteen (F4 to G5). SEL switches between two modes.
 
 | | LEFT | RIGHT |
 | --- | --- | --- |
-| **CHORD mode** | the bass. With nothing held, a bass arp runs on the chord's root. Hold a white key to play the bass yourself: the white keys are the set's scale, a black key the same note an octave up | the set's eight chords, one per white key (the ninth plays the first again). Each black key plays the chord on its left with more colour (a 7th, a 9th, a sus) |
+| **CHORD mode** | the bass, only while you hold a key (or with HOLD): the white keys are the set's scale, a black key the same note an octave up. ARP on: a bass arp runs on the note; off: the note is held | the set's eight chords, one per white key (the ninth plays the first again). Each black key plays the chord on its left with more colour (a 7th, a 9th, a sus) |
 | **LEAD mode** | the chords: the first seven on the white keys, coloured on the black keys. ARP decides how the left part plays them: as chords in the groove, or as a bass arp on their root | the lead: the white keys are the set's scale from its tonic, a black key the note a semitone up (a blue note) |
 
 ARP switches the left part's job: in CHORD mode a bass arp or a held root; in LEAD mode chords or a bass arp (the
-left sound follows: a pad for chords, a bass for the arp). REC is **HOLD**: a chord stays when you let go of its key.
+left sound follows: a pad for chords, a bass for the arp). REC is **HOLD**: a chord (and in CHORD mode the bass) stays when you let go of its key.
 
 ## The sounds
 
@@ -51,7 +51,8 @@ every page), with the game running underneath.
 | HOME | play (the knobs are the right sound's) | TONE | MOTION | CHAR | SPACE |
 | EDIT | SOUND: the right part, again the left, again HOME | TONE (the filter, or the FM's brightness) | MOTION (how far the envelope opens it) | CHAR: the chorus (Juno), the spread (OB), the drive (Moog), the shine (DX) | SPACE (the reverb, the delay past the middle) |
 | ENV | the envelope: right, left, HOME | ATTACK | DECAY | SUSTAIN | RELEASE |
-| LFO | GROOVE | CHORDS: FULL, QUARTER, EIGHTS, OFFBEAT, PUMP, SYNCO, HALF, ARP UP, ARP DOWN, ARP UP/DN, ARP RANDOM, CASCADE, TRANCE | BASS: ROOT, OCTAVE, OFFBEAT, ROLLING, ROOT-5TH, DISCO, HALF | SWING | GATE |
+| LFO | LFO, in time with the clock: right, left, HOME | RATE: 4 BARS .. 1/32 | DEPTH | WAVE: SINE, TRIANGLE, SAW, REV SAW, SQUARE, S + H | TARGET: FILTER, PITCH, AMP, PWM |
+| SEQ | GROOVE | CHORDS: FULL, QUARTER, EIGHTS, OFFBEAT, PUMP, SYNCO, HALF, ARP UP, ARP DOWN, ARP UP/DN, ARP RANDOM, CASCADE, TRANCE | BASS: ROOT, OCTAVE, OFFBEAT, ROLLING, ROOT-5TH, DISCO, HALF | SWING | GATE |
 | FX | SIDECHAIN | DEPTH | SHAPE: SOFT, PUMP, HARD, GATE | TARGET: VOLUME, FILTER, BOTH | KICK: 4/4, HALF, 2 + 4, TRAP |
 | GLO | GLOBAL | TEMPO | KEY | SYNC: AUTO, INT, EXT | USB HOST |
 
@@ -59,7 +60,6 @@ The other controls:
 
 - **ALGORITHM** picks the chord set. With OCT- or OCT+ held, it sets the key.
 - **SELECT** steps through the chord grooves.
-- **SEQ** switches the grooves on or off. Off, the chords and the bass are held.
 - **PLAY** starts the transport, which sends MIDI clock.
 - **SAVE** keeps everything.
 - **HOME** held a second brings both sounds back as designed.
@@ -76,15 +76,16 @@ Five more are secret: the game unlocks them.
 
 Each chord is voiced close to the one before it, so progressions move by steps, not jumps.
 
-## CHORD MAN
+## The drive
 
-Under every screen, CHORD MAN runs through the bar in time, eating its sixteen beat dots. He is an open ring that
-bites, with the chord's notes as four bars inside.
+Under every screen, your convertible cruises toward the horizon in the spirit of the 80s arcade racers. Everything is
+drawn in the firmware. The road's stripes pass in time with the groove, and the scenery changes every 16 bars: BEACH,
+CITY, SUNSET, NIGHT.
 
 - **Timing:** every key you play is judged against the grid: PERFECT, GOOD or a miss.
-- **Combo:** hits build the combo and push the SOURS back. The sours are the wrong notes, cracked diamonds. Misses let
-  them close in, and one that reaches CHORD MAN breaks the combo.
-- **FEVER:** a combo of 32 starts FEVER for eight bars, with double points while the sours run.
+- **Combo and speed:** hits build the combo and the speed, and close in on the rival car ahead. Passing it is worth
+  300 points. A miss breaks the combo, and the rival pulls away.
+- **TURBO:** a combo of 32 starts TURBO for eight bars, with double points.
 - **Unlocks:** points add up over all your sessions and unlock the secret sets at 3,000, 10,000, 25,000, 50,000 and
   100,000. The best session is the high score.
 

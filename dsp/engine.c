@@ -136,6 +136,9 @@ float eng_level(void)
 static float bus[2][NPARTS][2][MAXBLOCK];    /* [core][part][L, R] */
 static float out_l[MAXBLOCK], out_r[MAXBLOCK];
 static float lfo_buf[NPARTS][MAXBLOCK / CHUNK + 1];
+static float ulfo_buf[NPARTS][MAXBLOCK / CHUNK + 1];   /* the parts' LFOs (in time with the clock) */
+static float ulfo_sh[NPARTS];
+static int ulfo_cyc[NPARTS];
 static float lfo_ph[NPARTS];
 static uint32_t job_n;
 
@@ -150,9 +153,10 @@ static void render_voices(int core, uint32_t from, uint32_t to, uint32_t n)
         if (!v->amp.stage)
             continue;
         if (PS[v->part].type == T_FM)
-            render_fm(v, &PS[v->part], bus[core][v->part][0], bus[core][v->part][1], n);
+            render_fm(v, &PS[v->part], bus[core][v->part][0], bus[core][v->part][1], n, ulfo_buf[v->part]);
         else
-            render_analog(v, &PS[v->part], bus[core][v->part][0], bus[core][v->part][1], n, lfo_buf[v->part]);
+            render_analog(v, &PS[v->part], bus[core][v->part][0], bus[core][v->part][1], n, lfo_buf[v->part],
+                          ulfo_buf[v->part]);
     }
 }
 static void job_voices(uint32_t arg)     /* the second core: half the voices */
@@ -259,6 +263,34 @@ void eng_render(int32_t *lr, uint32_t n, float gain)
             lfo_ph[p] += rate * ISR * (float)CHUNK;
             if (lfo_ph[p] >= 1.0f)
                 lfo_ph[p] -= 1.0f;
+        }
+    }
+    /* each part's LFO, its phase from the clock: it stays on the bar */
+    {
+        static const uint16_t PER[NLRATES] = {384, 192, 96, 48, 24, 12, 6, 3};   /* ticks a cycle */
+        float spt = samples_per_tick(), t0 = (float)(PL.playing ? PL.t_song : PL.t_free) + fm_clampf(PL.acc, 0.0f, 0.999f);
+        for (p = 0; p < NPARTS; p++) {
+            float per = (float)PER[PS[p].lfo_rate], ph0 = t0 / per;
+            for (c = 0; c <= n / CHUNK; c++) {
+                float ph = ph0 + (float)(c * CHUNK) / (spt * per), x;
+                int cyc = (int)ph;
+                x = ph - (float)cyc;
+                switch (PS[p].lfo_wave) {
+                case LW_TRI: x = 1.0f - 4.0f * fm_fabsf(x - 0.5f); break;
+                case LW_SAW: x = 2.0f * x - 1.0f; break;
+                case LW_REVSAW: x = 1.0f - 2.0f * x; break;
+                case LW_SQUARE: x = x < 0.5f ? 1.0f : -1.0f; break;
+                case LW_SH:
+                    if (cyc != ulfo_cyc[p]) {
+                        ulfo_cyc[p] = cyc;
+                        ulfo_sh[p] = rndf();
+                    }
+                    x = ulfo_sh[p];
+                    break;
+                default: x = fm_sin_turns(x); break;
+                }
+                ulfo_buf[p][c] = x;
+            }
         }
     }
     ev_drain();

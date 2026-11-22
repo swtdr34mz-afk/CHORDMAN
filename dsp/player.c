@@ -122,6 +122,15 @@ static uint32_t len16(int sixteenths)
     return (uint32_t)s;
 }
 
+/* the bass now: CHORD mode, the note a left key holds (nothing without one); LEAD mode, the root of the chord the
+ * left keys hold */
+static int bass_want(void)
+{
+    if (CFG->mode == MODE_CHORD)
+        return PL.want_bass;
+    return PL.idx >= 0 ? bass_of((PL.ch.bass + key_shift() + 120) % 12) : -1;
+}
+
 /* the chord asked for changed (or the set, the key, the mode): voice it, and what sounds follows */
 static void chord_refresh(void)
 {
@@ -137,7 +146,7 @@ static void chord_refresh(void)
     }
     changed = idx != PL.idx || flv != PL.flv;
     if (!changed && PL.bass_note != -2) {
-        int bn = PL.want_bass >= 0 ? PL.want_bass : (PL.idx >= 0 ? bass_of((PL.ch.bass + key_shift() + 120) % 12) : -1);
+        int bn = bass_want();
         if (!bass_part_on() || bn == PL.bass_note)
             return;
     }
@@ -175,7 +184,7 @@ static void chord_refresh(void)
     }
     /* the bass: its note, held (no groove) or taken over by the hit under way */
     if (bass_part_on()) {
-        int bn = PL.want_bass >= 0 ? PL.want_bass : (PL.idx >= 0 ? bass_of((PL.ch.bass + key_shift() + 120) % 12) : -1);
+        int bn = bass_want();
         if (bn != PL.bass_note) {
             PL.bass_note = bn;
             held_part_off(PART_L);

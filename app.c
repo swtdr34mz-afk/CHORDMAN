@@ -23,7 +23,7 @@
 #include "engine.h"
 
 /* --------------------------------------------------------------- settings --- */
-#define SET_MAGIC 0x434D4E32u            /* "CMN2" */
+#define SET_MAGIC 0x434D4E33u            /* "CMN3" */
 typedef struct {
     uint32_t magic;
     eng_cfg_t eng;
@@ -44,6 +44,10 @@ static void part_default(part_t *p, int snd)
     p->k[3] = s->type == T_MOOG ? 30 : 56;
     for (i = 0; i < 4; i++)
         p->env[i] = s->env[i];
+    p->lfo[0] = LR_4TH;
+    p->lfo[1] = 0;                       /* (off until DEPTH is turned) */
+    p->lfo[2] = LW_SINE;
+    p->lfo[3] = LT_FILTER;
 }
 
 static void settings_defaults(void)
@@ -143,8 +147,8 @@ void app_init(void)
 }
 
 /* --------------------------------------------------------------------- UI --- */
-enum { PG_HOME, PG_SOUND, PG_ENV, PG_GROOVE, PG_SC, PG_GLO, NPAGES };
-static const char *const PAGE_NAME[NPAGES] = {"", "SOUND", "ENV", "GROOVE", "SIDECHAIN", "GLOBAL"};
+enum { PG_HOME, PG_SOUND, PG_ENV, PG_GROOVE, PG_SC, PG_GLO, PG_LFO, NPAGES };
+static const char *const PAGE_NAME[NPAGES] = {"", "SOUND", "ENV", "GROOVE", "SIDECHAIN", "GLOBAL", "LFO"};
 enum { OV_NONE, OV_SET, OV_KEY };
 
 static struct {
@@ -318,8 +322,8 @@ static void key_up(uint32_t k, uint32_t held)
         chord_set_from(ui.chord_key);
         return;
     }
-    if (set.eng.mode == MODE_CHORD) {    /* a bass key */
-        if ((int)k != ui.bass_key)
+    if (set.eng.mode == MODE_CHORD) {    /* a bass key (HOLD keeps it too) */
+        if ((int)k != ui.bass_key || set.hold)
             return;
         ui.bass_key = -1;
         for (j = 0; j < 12u; j++)
@@ -355,6 +359,8 @@ static uint8_t *knob_ref(int page, int k)
         return &p->k[k];
     case PG_ENV:
         return &p->env[k];
+    case PG_LFO:
+        return k == 1 ? &p->lfo[1] : 0;
     default:
         return 0;
     }
@@ -363,7 +369,7 @@ static const char *knob_name(int page, int k)
 {
     static const char *const S[4] = {"TONE", "MOTION", "", "SPACE"}, *const E[4] = {"ATTACK", "DECAY", "SUSTAIN", "RELEASE"},
                       *const GR[4] = {"CHORDS", "BASS", "SWING", "GATE"}, *const SC[4] = {"DEPTH", "SHAPE", "TARGET", "KICK"},
-                      *const GL[4] = {"TEMPO", "KEY", "SYNC", "USB HOST"};
+                      *const GL[4] = {"TEMPO", "KEY", "SYNC", "USB HOST"}, *const LF[4] = {"RATE", "DEPTH", "WAVE", "TARGET"};
     switch (page) {
     case PG_HOME:
     case PG_SOUND:
@@ -374,6 +380,8 @@ static const char *knob_name(int page, int k)
         return GR[k];
     case PG_SC:
         return SC[k];
+    case PG_LFO:
+        return LF[k];
     default:
         return GL[k];
     }
@@ -393,6 +401,19 @@ static float knob_val(int page, int k, char *t)
         return (float)*r / 127.0f;
     }
     switch (page) {
+    case PG_LFO: {
+        part_t *p = PART(ui.focus);
+        if (k == 0) {
+            text_cat(t, LRATE_NAME[p->lfo[0]]);
+            return (float)p->lfo[0] / (float)(NLRATES - 1);
+        }
+        if (k == 2) {
+            text_cat(t, LWAVE_NAME[p->lfo[2]]);
+            return (float)p->lfo[2] / (float)(NLWAVES - 1);
+        }
+        text_cat(t, LTGT_NAME[p->lfo[3]]);
+        return (float)p->lfo[3] / (float)(NLTGTS - 1);
+    }
     case PG_GROOVE:
         if (k == 0) {
             text_cat(t, CRHY_NAME[set.eng.crhy]);
@@ -467,6 +488,11 @@ static void knob_turn(int k, int32_t e)
     if (r) {
         *r = (uint8_t)clamp((int32_t)*r + e * acc, 0, 127);
         eng_changed();
+    } else if (ui.page == PG_LFO) {
+        part_t *p = PART(ui.focus);
+        int max = k == 0 ? NLRATES - 1 : k == 2 ? NLWAVES - 1 : NLTGTS - 1;
+        p->lfo[k] = (uint8_t)clamp(p->lfo[k] + step_of(e), 0, max);
+        eng_changed();
     } else if (ui.page == PG_GROOVE) {
         if (k == 0)
             set.eng.crhy = (uint8_t)clamp(set.eng.crhy + step_of(e), 0, NCRHY - 1);
@@ -527,8 +553,9 @@ static void button_down(uint32_t b)
 {
     switch (b) {
     case B_EDIT:
-    case B_ENV: {
-        int pg = b == B_EDIT ? PG_SOUND : PG_ENV;
+    case B_ENV:
+    case B_LFO: {
+        int pg = b == B_EDIT ? PG_SOUND : b == B_ENV ? PG_ENV : PG_LFO;
         if (ui.page != pg) {
             ui.page = pg;
             ui.focus = PART_R;
@@ -542,10 +569,10 @@ static void button_down(uint32_t b)
         ui.redraw = 1;
         break;
     }
-    case B_LFO:
+    case B_SEQ:
     case B_FX:
     case B_GLO: {
-        int pg = b == B_LFO ? PG_GROOVE : b == B_FX ? PG_SC : PG_GLO;
+        int pg = b == B_SEQ ? PG_GROOVE : b == B_FX ? PG_SC : PG_GLO;
         ui.page = ui.page == pg ? PG_HOME : pg;
         ui.focus = PART_R;
         ui.overlay = OV_NONE;
@@ -577,12 +604,6 @@ static void button_down(uint32_t b)
         eng_rechord();
         app_say("LEFT", part_role(PART_L));
         break;
-    case B_SEQ:
-        set.eng.groove_on ^= 1u;
-        set_dirty = 1;
-        eng_rechord();
-        app_say("GROOVE", set.eng.groove_on ? "ON" : "OFF");
-        break;
     case B_REC:
         set.hold ^= 1u;
         set_dirty = 1;
@@ -593,6 +614,10 @@ static void button_down(uint32_t b)
                 if ((ui.keys >> j & 1u) && chord_zone(j))
                     ui.chord_key = (int)j;
             chord_set_from(ui.chord_key);
+            if (set.eng.mode == MODE_CHORD && ui.bass_key >= 0 && !(ui.keys >> ui.bass_key & 1u)) {
+                ui.bass_key = -1;
+                eng_bass_note(-1);
+            }
         }
         app_say("HOLD", set.hold ? "ON" : "OFF");
         break;
@@ -716,13 +741,13 @@ static void input(void)
     /* the lights */
     if (ui.page == PG_SOUND) lit |= 1u << B_EDIT;
     if (ui.page == PG_ENV) lit |= 1u << B_ENV;
-    if (ui.page == PG_GROOVE) lit |= 1u << B_LFO;
+    if (ui.page == PG_GROOVE) lit |= 1u << B_SEQ;
+    if (ui.page == PG_LFO) lit |= 1u << B_LFO;
     if (ui.page == PG_SC) lit |= 1u << B_FX;
     if (ui.page == PG_GLO) lit |= 1u << B_GLO;
     if (ui.page == PG_HOME) lit |= 1u << B_HOME;
     if (set.eng.mode == MODE_LEAD) lit |= 1u << B_SEL;
     if (LB()) lit |= 1u << B_ARP;
-    if (set.eng.groove_on) lit |= 1u << B_SEQ;
     if (set.hold) lit |= 1u << B_REC;
     if (set_dirty) lit |= 1u << B_SAVE;
     if (eng_playing()) lit |= 1u << B_PLAY;
@@ -809,7 +834,7 @@ static void draw_home(void)
     text_cat(t, s->name);
     cv_text(6, 1, &FONT_S, t, C_SOFT);
     if (set.eng.mode == MODE_CHORD)
-        text_r(234, 1, &FONT_S, set.eng.groove_on ? CRHY_NAME[set.eng.crhy] : "HELD", C_AMBER);
+        text_r(234, 1, &FONT_S, CRHY_NAME[set.eng.crhy], C_AMBER);
     else
         text_r(234, 1, &FONT_S, SCALE_NAME[s->scale], C_CORAL);
     /* the big name: the chord (CHORD) or the lead's note (LEAD); and what the other part does */
@@ -821,9 +846,11 @@ static void draw_home(void)
         if (eng_bass_now() >= 0) {
             note_text(eng_bass_now(), t);
             text_cat(t, "  ");
+            text_cat(t, LB() ? BASS_NAME[set.eng.bass] : "HELD");
+        } else {
+            text_cat(t, "LEFT HAND");
         }
-        text_cat(t, LB() ? (set.eng.groove_on ? BASS_NAME[set.eng.bass] : "HELD") : "HELD");
-        text_r(234, 36, &FONT_B, t, C_MINT);
+        text_r(234, 36, &FONT_B, t, eng_bass_now() >= 0 ? C_MINT : C_RULE);
     } else {
         int ln = eng_lead_now();
         if (ln >= 0)
@@ -937,11 +964,11 @@ static void page_extra(int page)         /* under the dials: the groove's bar, t
             float duck = eng_duck();
             cv_rect(6, 118, (int32_t)(duck * 228.0f), 2, C_TEXT);
         }
-    } else if (page == PG_SOUND || page == PG_ENV) {
+    } else if (page == PG_SOUND || page == PG_ENV || page == PG_LFO) {
         char t[32] = "";
         text_cat(t, ui.focus == PART_L ? "LEFT  " : "RIGHT  ");
         text_cat(t, part_role(ui.focus));
-        text_cat(t, "   EDIT / ENV AGAIN: ");
+        text_cat(t, "   AGAIN: ");
         text_cat(t, ui.focus == PART_R ? "LEFT" : "HOME");
         cv_text(6, 104, &FONT_T, t, C_SOFT);
     } else if (page == PG_GLO) {
@@ -1005,7 +1032,6 @@ void app_ui_init(void)
     lcd_fill(0, 0, 240, 240, C_BG);
     ui.chord_key = ui.bass_key = -1;
     ui.focus = PART_R;
-    G.sour_d = 150.0f;
     ui.redraw = 1;
 }
 
